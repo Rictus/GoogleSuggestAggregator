@@ -76,32 +76,9 @@ module.exports = {
             onDone();
         });
     },
-    launch: function () {
-        var that = this;
-        conf.generatedFiles = [];
-        var firstFile = generatedDataDirectoryPath + "data_length_1";
-        fs.stat(firstFile, function (err, stat) {
-            if (err == null) {
-                fs.unlink(firstFile, function () {
-                    firstFileReady();
-                })
-            } else if (err.code == 'ENOENT') {
-                // File does not exist. So that's ok
-                firstFileReady();
-            } else {
-                throw err;
-            }
-        });
-
-        var firstFileReady = function () {
-            for (var i = 0; i < allowedChars.length; i++) {
-                fs.appendFile(firstFile, allowedChars[i] + "\n", function (err) {
-                    if (err) throw err;
-                });
-            }
-            conf.generatedFiles.push(firstFile);
-
-            (function loop(idx, maxIdx) {
+    launch: function (processusDone) {
+        var writeFirstFile = function (doneCb) {
+            var loopWriteNextFile = function (idx, maxIdx) {
                 var inputFile, outputFile;
                 inputFile = generatedDataDirectoryPath + "data_length_" + (idx - 1);
                 outputFile = generatedDataDirectoryPath + "data_length_" + idx;
@@ -116,7 +93,9 @@ module.exports = {
                     console.timeEnd("Generating file '" + outputFile + "'");
                     idx++;
                     if (idx <= maxIdx) {
-                        loop(idx, maxIdx);
+                        loopWriteNextFile(idx, maxIdx);
+                    } else {
+                        doneCb();
                     }
                 };
 
@@ -132,7 +111,32 @@ module.exports = {
                         throw err;
                     }
                 });
-            })(2, conf.maxWordLength);
+            };
+
+            for (var i = 0; i < allowedChars.length; i++) {
+                // Need to write synchronously to keep order
+                fs.appendFileSync(firstFile, allowedChars[i] + "\n");
+            }
+            conf.generatedFiles.push(firstFile);
+            if (conf.maxWordLength > 1) {
+                loopWriteNextFile(2, conf.maxWordLength);
+            }
         };
+
+        var that = this;
+        conf.generatedFiles = [];
+        var firstFile = generatedDataDirectoryPath + "data_length_1";
+        fs.stat(firstFile, function (err, stat) {
+            if (err == null) {
+                fs.unlink(firstFile, function () {
+                    writeFirstFile(processusDone);
+                })
+            } else if (err.code == 'ENOENT') {
+                // File does not exist. So that's ok
+                writeFirstFile(processusDone);
+            } else {
+                throw err;
+            }
+        });
     }
 };
