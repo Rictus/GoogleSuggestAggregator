@@ -77,49 +77,63 @@ module.exports = {
         });
     },
     launch: function (processusDone) {
-        var writeFirstFile = function (doneCb) {
-            var loopWriteNextFile = function (idx, maxIdx) {
-                var inputFile, outputFile;
-                inputFile = generatedDataDirectoryPath + "data_length_" + (idx - 1);
-                outputFile = generatedDataDirectoryPath + "data_length_" + idx;
-                conf.generatedFiles.push(outputFile);
-                var onFileDeleted = function (err) {
-                    if (err)throw err;
-                    console.time("Generating file '" + outputFile + "'");
-                    that.generateCombinationsFromFile(inputFile, outputFile, onGenerationTerminated);
-                };
+        var writeNextFile = function (idx, maxIdx, cb) {
+            var inputFile, outputFile, outputFilename;
+            outputFilename = "data_length_" + idx;
+            inputFile = generatedDataDirectoryPath + "data_length_" + (idx - 1);
+            outputFile = generatedDataDirectoryPath + outputFilename;
 
-                var onGenerationTerminated = function () {
-                    console.timeEnd("Generating file '" + outputFile + "'");
-                    idx++;
-                    if (idx <= maxIdx) {
-                        loopWriteNextFile(idx, maxIdx);
-                    } else {
-                        doneCb();
-                    }
-                };
-
-                fs.stat(outputFile, function (err, stat) {
-                    if (err == null) {
-                        fs.unlink(outputFile, function () {
-                            onFileDeleted();
-                        })
-                    } else if (err.code == 'ENOENT') {
-                        // File does not exist. So that's ok
-                        onFileDeleted();
-                    } else {
-                        throw err;
-                    }
-                });
+            conf.generatedFiles.push(outputFile);
+            var getDateTime = function () {
+                var date = new Date();
+                var day = date.getDate();
+                var month = date.getMonth() + 1;
+                var year = date.getFullYear();
+                var minutes = date.getMinutes();
+                var hour = date.getHours();
+                var seconds = date.getSeconds();
+                return day + "/" + month + "/" + year + " " + hour + ":" + minutes + ":" + seconds;
+            };
+            var startGeneration = function (err) {
+                if (err)throw err;
+                console.log(getDateTime() + " : Starting generation");
+                console.time("Generated file '" + outputFilename + "'");
+                that.generateCombinationsFromFile(inputFile, outputFile, onGenerationTerminated);
             };
 
+            var onGenerationTerminated = function () {
+                console.timeEnd("Generated file '" + outputFilename + "'");
+                console.log(getDateTime() + " : Generation terminated.");
+                console.log("");
+                idx++;
+                if (idx <= maxIdx) {
+                    writeNextFile(idx, maxIdx, cb);
+                } else {
+                    cb();
+                }
+            };
+
+            fs.stat(outputFile, function (err, stat) {
+                if (err == null) {
+                    fs.unlink(outputFile, function () {
+                        startGeneration();
+                    })
+                } else if (err.code == 'ENOENT') {
+                    // File does not exist. So that's ok
+                    startGeneration();
+                } else {
+                    throw err;
+                }
+            });
+        };
+        var writeFirstFile = function (doneCb) {
             for (var i = 0; i < allowedChars.length; i++) {
                 // Need to write synchronously to keep order
                 fs.appendFileSync(firstFile, allowedChars[i] + "\n");
             }
             conf.generatedFiles.push(firstFile);
             if (conf.maxWordLength > 1) {
-                loopWriteNextFile(2, conf.maxWordLength);
+                writeNextFile(2, conf.maxWordLength);
             }
         };
 
