@@ -1,6 +1,6 @@
 var fs = require('fs');
-var conf = require('./conf.json');
-var generatedDataDirectoryPath = __dirname + "/generations/";
+var conf = require('./../conf.json');
+var generatedDataDirectoryPath = "generations/";
 
 allowedChars = conf.allowedChars.split('');
 
@@ -109,7 +109,11 @@ module.exports = {
                 if (idx <= maxIdx) {
                     writeNextFile(idx, maxIdx, cb);
                 } else {
-                    cb();
+                    if (typeof cb !== "function") {
+                        console.error("Callback not provided.");
+                    } else {
+                        cb();
+                    }
                 }
             };
 
@@ -117,7 +121,7 @@ module.exports = {
                 if (err == null) {
                     fs.unlink(outputFile, function () {
                         startGeneration();
-                    })
+                    });
                 } else if (err.code == 'ENOENT') {
                     // File does not exist. So that's ok
                     startGeneration();
