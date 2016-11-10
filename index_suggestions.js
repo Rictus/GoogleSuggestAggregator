@@ -1,5 +1,6 @@
-var googleSuggestQuerier = require('./src/googleSuggestQuerier.js');
+var googleSuggestQuerier = require('./src/googleSuggestQuerier.js')(__dirname + "/conf.json");
 
 console.time("googleSuggestQuerier");
-googleSuggestQuerier.launchSync();
-console.timeEnd("googleSuggestQuerier");
+googleSuggestQuerier.sync(function () {
+    console.timeEnd("googleSuggestQuerier");
+});
