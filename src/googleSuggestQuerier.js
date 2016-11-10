@@ -74,8 +74,7 @@ module.exports = function (confFilePath) {
                 }
                 return body;
             } catch (e) {
-                console.error("------");
-                console.error("Error for word '" + word + "' : ");
+                console.error("---error---");
                 console.error(body);
                 console.error(e);
                 console.error("------");
