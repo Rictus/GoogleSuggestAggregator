@@ -1,6 +1,5 @@
 var request = require('request');
 var syncRequest = require('sync-request');
-var readline = require('readline');
 var fs = require('fs');
 var path = require('path');
 var LineByLineReader = require('line-by-line');
@@ -20,6 +19,12 @@ module.exports = function (confFilePath) {
         },
         errorRequest: function (url, query, explain) {
             console.error("[" + query + "] (" + url + ") : " + explain);
+        },
+        AsyncReaderState: function (state, queueLength, currentNumberOfSockets) {
+            console.log("Reader " + state + ". " + queueLength + " elements in queue. " + currentNumberOfSockets + " sockets.");
+        },
+        AsyncSocketState: function (word, state) {
+            console.log("[" + word + "] Socket " + state);
         }
     };
 
@@ -176,45 +181,46 @@ module.exports = function (confFilePath) {
             var lineReader = _files.readFileAsync(inputFile, function (line) {
                 onLineRead(line);
             }, function () {
-                console.log("closing " + inputFile);
+                _log.AsyncReaderState("Close", queueLines.length, CURRENT_NB_SOCKETS);
                 cb();
             });
 
-            var state = function (f) {
-                console.log(CURRENT_NB_SOCKETS + "/" + MAX_NB_SOCKETS + "  Q=" + queueLines.length + " from : " + f);
-            };
-
             var onLineRead = function (line) {
                 if (MAX_NB_SOCKETS == CURRENT_NB_SOCKETS) {
-                    // Can't send the current query, need to wait for another query to resolve
+                    // Can't send the current query. Otherwise, the maximum number of
+                    // sockets will be reached. Need to wait for other queries to be resolve.
                     queueLines.push(line);
                     lineReader.pause();
-                    state("Block Reader " + line);
+                    _log.AsyncReaderState("Pause", queueLines.length, CURRENT_NB_SOCKETS);
                 } else {
                     CURRENT_NB_SOCKETS++;
-                    state("Socket Send " + line);
+                    _log.AsyncSocketState(line, "Send");
                     _gSuggest.getSuggestionsAsync(line, function (suggestions) {
-                        CURRENT_NB_SOCKETS--;
-                        state("Socket resolve " + line);
-                        if (suggestions === false) {
-                            // Blocked by google. Need to wait
-                            var nbMsWait = 60000;
-                            lineReader.pause();
-                            console.log("[" + line + "] Google is blocking our requests. Let's wait " + nbMsWait + " milliseconds.");
-                            setTimeout(function () {
-                                onLineRead(line)
-                            }, nbMsWait);
+                        onSuggestions(line, suggestions)
+                    });
+                }
+            };
+
+            var onSuggestions = function (word, suggestions) {
+                CURRENT_NB_SOCKETS--;
+                _log.AsyncSocketState(word, "Resolve");
+                if (suggestions === false) {
+                    // Blocked by google. Need to wait
+                    var nbMsWait = 60000;
+                    lineReader.pause();
+                    console.log("[" + word + "] Google is blocking our requests. Let's wait " + nbMsWait + " milliseconds.");
+                    setTimeout(function () {
+                        onLineRead(word)
+                    }, nbMsWait);
+                } else {
+                    _files.writeSuggestionAsync(word, suggestions, outputFile, function () {
+                        // Check the queue
+                        if (queueLines.length > 0) {
+                            onLineRead(queueLines.pop());
                         } else {
-                            _files.writeSuggestionAsync(line, suggestions, outputFile, function () {
-                                // Check the queue
-                                if (queueLines.length > 0) {
-                                    onLineRead(queueLines.pop());
-                                } else {
-                                    // Read the next line
-                                    state("Resume Reader ");
-                                    lineReader.resume();
-                                }
-                            });
+                            // Read the next line
+                            _log.AsyncReaderState("Resume", queueLines.length, CURRENT_NB_SOCKETS);
+                            lineReader.resume();
                         }
                     });
                 }
