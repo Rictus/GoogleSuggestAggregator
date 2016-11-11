@@ -4,12 +4,12 @@ console.log(new Date());
 
 console.time("googleSuggestQuerier");
 
- googleSuggestQuerier.async(function () {
- console.timeEnd("googleSuggestQuerier");
- });
- //*/
-/*
-googleSuggestQuerier.sync();
-console.timeEnd("googleSuggestQuerier");
+googleSuggestQuerier.async(function () {
+    console.timeEnd("googleSuggestQuerier");
+});
 //*/
+/*
+ googleSuggestQuerier.sync();
+ console.timeEnd("googleSuggestQuerier");
+ //*/
 

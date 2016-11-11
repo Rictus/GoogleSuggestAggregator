@@ -37,20 +37,28 @@ module.exports = function (confFilePath) {
         },
         sync: function (query, language) {
             var url = this.build_url(query, language);
-            var res = syncRequest('GET', url);
-            switch (res.statusCode) {
-                case 403:
-                    return false;
-                    break;
-                case 200:
-                    return res.getBody().toString();
-                    break;
-                default:
-                    _log.errorRequest(url, query, "Don't know how to handle status code " + res.statusCode);
-                    break;
+            try {
+                var res = syncRequest('GET', url);
+                switch (res.statusCode) {
+                    case 403:
+                        return false;
+                        break;
+                    case 200:
+                        return res.getBody().toString();
+                        break;
+                    default:
+                        _log.errorRequest(url, query, "Don't know how to handle status code " + res.statusCode);
+                        break;
+                }
+            } catch (e) {
+                var nbMsWait = 1000 * 30;
+                console.error("Lost connection. Trying in " + nbMsWait + " milliseconds.");
+                setTimeout(function () {
+                    return this.sync(query, language);
+                }, nbMsWait);
             }
         },
-        async: function (query, language, callback) {
+        async: function (query, language, callback) { //TODO Check connectivity
             var url = this.build_url(query, language);
             request(url, function (error, response, body) {
                 if (!error && response.statusCode == 200) {
@@ -93,6 +101,27 @@ module.exports = function (confFilePath) {
     };
 
     var _files = {
+        deleteFileIfExistSync: function (filePath) {
+            try {
+                fs.statSync(filePath);
+                fs.unlinkSync(filePath);
+            }
+            catch (e) {
+                // It's ok, the file doesn't exist.
+            }
+        },
+        deleteFileIfExistAsync: function (filePath, cb) {
+            fs.stat(filePath, function (err) {
+                if (err) {
+                    // It's ok the file doesn't exist.
+                    cb();
+                } else {
+                    fs.unlink(filePath, function () {
+                        cb();
+                    });
+                }
+            });
+        },
         getStringToWrite: function (word, suggestions) {
             return word + " > " + suggestions + "\n";
         },
@@ -163,14 +192,39 @@ module.exports = function (confFilePath) {
             return lr;
         }
     };
-
+    var k = 0;
     var _process = {
-        sync: function (inputFile, outputFile) {
+        sync: function (inputFile, outputFile, cb) {
             var suggestions;
-            _files.readLineSync(inputFile, function (line) {
+
+            var onLineRead = function (line) {
                 suggestions = _gSuggest.getSuggestionsSync(line);
-                _files.writeSuggestionSync(line, suggestions, outputFile);
+                if (suggestions === false) {
+                    // Blocked by google. Need to wait
+                    var nbMsWait = 1000 * 60 * 15;
+                    k++;
+                    console.log("[" + line + "] Google is blocking our requests. Let's wait " + nbMsWait + " milliseconds : " + k + "-nth time.");
+                    lineReader.pause();
+                    setTimeout(function () {
+                        onLineRead(line)
+                    }, nbMsWait);
+                } else {
+                    lineReader.resume();
+                    _files.writeSuggestionSync(line, suggestions, outputFile);
+                    cb();
+                }
+            };
+
+            // Need to use an async file reader because we need to stop file reading when google block requests
+            var lineReader = _files.readFileAsync(inputFile, function (line) {
+                onLineRead(line);
+            }, function () {
+                cb();
             });
+
+            /*_files.readLineSync(inputFile, function (line) {
+             onLineRead(line);
+             });//*/
         },
         async: function (inputFile, outputFile, cb) {
             var MAX_NB_SOCKETS = 15;
@@ -205,7 +259,7 @@ module.exports = function (confFilePath) {
                 _log.AsyncSocketState(word, "Resolve");
                 if (suggestions === false) {
                     // Blocked by google. Need to wait
-                    var nbMsWait = 60000;
+                    var nbMsWait = 1000 * 60 * 15;
                     lineReader.pause();
                     console.log("[" + word + "] Google is blocking our requests. Let's wait " + nbMsWait + " milliseconds.");
                     setTimeout(function () {
@@ -230,10 +284,19 @@ module.exports = function (confFilePath) {
     return {
         sync: function () {
             _files.getCombinationFiles(function (files) {
-                for (var idx = 0; idx < files.length; idx++) {
+                var loop = function (files, idx) {
                     var f = files[idx];
                     var of = queriedDataDirectoryPath + "/queried_" + path.basename(f);
-                    _process.sync(f, of);
+                    _files.deleteFileIfExistSync(of);
+                    _process.sync(f, of, function () {
+                        idx++;
+                        if (idx < files.length) {
+                            loop(files, idx);
+                        }
+                    });
+                };
+                if (files.length > 0) {
+                    loop(files, 0);
                 }
             });
         },
@@ -242,11 +305,13 @@ module.exports = function (confFilePath) {
                 var loop = function (files, idx) {
                     var f = files[idx];
                     var of = queriedDataDirectoryPath + "/queried_" + path.basename(f);
-                    _process.async(f, of, function () {
-                        idx++;
-                        if (idx < files.length) {
-                            loop(files, idx);
-                        }
+                    _files.deleteFileIfExistAsync(of, function () {
+                        _process.async(f, of, function () {
+                            idx++;
+                            if (idx < files.length) {
+                                loop(files, idx);
+                            }
+                        });
                     });
                 };
                 if (files.length > 0) {

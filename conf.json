@@ -1,7 +1,7 @@
 {
-  "maxWordLength": 2,
-  "generatedFiles": [],
+  "maxWordLength": 6,
   "allowedChars": "abcdefghijklmnopqrstuvwxyz ",
+  "generatedFiles": [],
   "generatedDataDirectoryPath": "generations",
   "queriedDataDirectoryPath": "queried"
 }
