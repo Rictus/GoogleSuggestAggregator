@@ -1,4 +1,4 @@
-generations/
-queried/
 .idea/
+generations/*
+queried/*
 node_modules/
