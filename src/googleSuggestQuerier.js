@@ -101,6 +101,13 @@ module.exports = function (confFilePath) {
     };
 
     var _files = {
+        createDataDirectorySync: function () {
+            try {
+                fs.statSync(queriedDataDirectoryPath);
+            } catch (e) {
+                fs.mkdirSync(queriedDataDirectoryPath);
+            }
+        },
         deleteFileIfExistSync: function (filePath) {
             try {
                 fs.statSync(filePath);
@@ -283,6 +290,7 @@ module.exports = function (confFilePath) {
 
     return {
         sync: function () {
+            _files.createDataDirectorySync();
             _files.getCombinationFiles(function (files) {
                 var loop = function (files, idx) {
                     var f = files[idx];
@@ -301,6 +309,7 @@ module.exports = function (confFilePath) {
             });
         },
         async: function () {
+            _files.createDataDirectorySync();
             _files.getCombinationFiles(function (files) {
                 var loop = function (files, idx) {
                     var f = files[idx];

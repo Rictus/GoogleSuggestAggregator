@@ -56,7 +56,7 @@ module.exports = function (configurationFilePath) {
 
                 var onGenerationTerminated = function () {
                     console.timeEnd("Generated file '" + outputFilename + "'");
-                    console.log(getDateTime() + " : Generation terminated.");
+                    console.log(getDateTime() + " : Generation of words of length " + wordLength + " completed.");
                     console.log("");
                     wordLength++;
                     if (wordLength <= maxWordLength) {
@@ -84,7 +84,6 @@ module.exports = function (configurationFilePath) {
                 });
             };
             var writeFirstFile = function (doneCb) {
-
                 for (var i = 0; i < allowedChars.length; i++) {
                     // Need to write synchronously to keep order
                     fs.appendFileSync(firstFile, allowedChars[i] + "\n");
@@ -94,20 +93,39 @@ module.exports = function (configurationFilePath) {
                     writeNextFile(2, conf["maxWordLength"], doneCb);
                 }
             };
+            var onDirectoryExist = function () {
+                fs.stat(firstFile, function (err, stat) {
+                    if (err == null) {
+                        fs.unlink(firstFile, function () {
+                            writeFirstFile(processusDone);
+                        })
+                    } else if (err.code == 'ENOENT') {
+                        // File does not exist. So that's ok
+                        writeFirstFile(processusDone);
+                    } else {
+                        throw err;
+                    }
+                });
+            };
 
             var that = this;
             conf["generatedFiles"] = [];
             var firstFile = generatedDataDirectoryPath + "/data_length_1";
-            fs.stat(firstFile, function (err, stat) {
+
+            fs.stat(generatedDataDirectoryPath, function (err, stat) {
+
                 if (err == null) {
-                    fs.unlink(firstFile, function () {
-                        writeFirstFile(processusDone);
-                    })
-                } else if (err.code == 'ENOENT') {
-                    // File does not exist. So that's ok
-                    writeFirstFile(processusDone);
+                    console.log("Directory " + generatedDataDirectoryPath + " exist.");
+                    onDirectoryExist();
                 } else {
-                    throw err;
+                    fs.mkdir(generatedDataDirectoryPath, function (err) {
+                        if (err) {
+                            console.error("Can't create the directory '" + generatedDataDirectoryPath + "'");
+                        } else {
+                            console.log("Directory " + generatedDataDirectoryPath + " created.");
+                            onDirectoryExist();
+                        }
+                    });
                 }
             });
         }
