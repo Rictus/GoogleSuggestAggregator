@@ -25,6 +25,9 @@ module.exports = function (confFilePath) {
         },
         AsyncSocketState: function (word, state) {
             console.log("[" + word + "] Socket " + state);
+        },
+        GoogleReject: function (word, waitingTime) {
+            console.log("[" + word + "] Google is blocking our requests. Waiting " + waitingTime + " milliseconds.");
         }
     };
 
@@ -101,6 +104,7 @@ module.exports = function (confFilePath) {
     };
 
     var _files = {
+        wordSuggestionSeparator: " > ",
         createDataDirectorySync: function () {
             try {
                 fs.statSync(queriedDataDirectoryPath);
@@ -130,7 +134,7 @@ module.exports = function (confFilePath) {
             });
         },
         getStringToWrite: function (word, suggestions) {
-            return word + " > " + suggestions + "\n";
+            return word + this.wordSuggestionSeparator + suggestions + "\n";
         },
         writeSuggestionSync: function (word, suggestions, file) {
             _log.fileWrite(word, suggestions, file);
@@ -197,9 +201,18 @@ module.exports = function (confFilePath) {
                 actionOnClose();
             });
             return lr;
+        },
+        getQueriedWords: function (filePath, cb) {
+            var that = this;
+            var queriedWords = [];//WIP
+            var lr = this.readFileAsync(filePath, function (line) {
+                queriedWords.push(line.split(that.wordSuggestionSeparator)[0]);
+            }, function () {
+                cb(queriedWords);
+            });
         }
     };
-    var k = 0;
+
     var _process = {
         sync: function (inputFile, outputFile, cb) {
             var suggestions;
@@ -209,8 +222,7 @@ module.exports = function (confFilePath) {
                 if (suggestions === false) {
                     // Blocked by google. Need to wait
                     var nbMsWait = 1000 * 60 * 15;
-                    k++;
-                    console.log("[" + line + "] Google is blocking our requests. Let's wait " + nbMsWait + " milliseconds : " + k + "-nth time.");
+                    _log.GoogleReject(line, nbMsWait);
                     lineReader.pause();
                     setTimeout(function () {
                         onLineRead(line)
@@ -218,20 +230,15 @@ module.exports = function (confFilePath) {
                 } else {
                     lineReader.resume();
                     _files.writeSuggestionSync(line, suggestions, outputFile);
-                    cb();
                 }
             };
-
-            // Need to use an async file reader because we need to stop file reading when google block requests
+            // Need to use an async file reader because we need to stop file reader when google block requests
             var lineReader = _files.readFileAsync(inputFile, function (line) {
                 onLineRead(line);
             }, function () {
                 cb();
             });
 
-            /*_files.readLineSync(inputFile, function (line) {
-             onLineRead(line);
-             });//*/
         },
         async: function (inputFile, outputFile, cb) {
             var MAX_NB_SOCKETS = 15;
@@ -289,7 +296,7 @@ module.exports = function (confFilePath) {
     };
 
     return {
-        sync: function () {
+        launchSync: function () {
             _files.createDataDirectorySync();
             _files.getCombinationFiles(function (files) {
                 var loop = function (files, idx) {
@@ -308,7 +315,7 @@ module.exports = function (confFilePath) {
                 }
             });
         },
-        async: function () {
+        launchAsync: function () {
             _files.createDataDirectorySync();
             _files.getCombinationFiles(function (files) {
                 var loop = function (files, idx) {
@@ -322,6 +329,25 @@ module.exports = function (confFilePath) {
                             }
                         });
                     });
+                };
+                if (files.length > 0) {
+                    loop(files, 0);
+                }
+            });
+        },
+        resumeAsync: function () {
+            _files.createDataDirectorySync();
+            _files.getCombinationFiles(function (files) {
+                var loop = function (files, idx) {
+                    var f = files[idx];
+                    var of = queriedDataDirectoryPath + "/queried_" + path.basename(f);
+                    //TODO
+                    // Need to know which words have been queried
+                    _files.getQueriedWords(f, function (words) {
+
+                    });
+                    // If the number of queried words is equal to a *magic formula* for the current length, the file is complete.
+                    // Otherwise, let's query missing ones
                 };
                 if (files.length > 0) {
                     loop(files, 0);

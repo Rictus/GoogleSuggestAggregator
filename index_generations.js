@@ -1,6 +1,6 @@
 var combinationsGenerator = require('./src/combinationsGenerator.js')(__dirname + "/conf.json");
 
-console.time("combinationsGenerator : ");
+console.time("combinationsGenerator");
 combinationsGenerator.launch(function () {
-    console.timeEnd("combinationsGenerator : ");
+    console.timeEnd("combinationsGenerator ");
 });
