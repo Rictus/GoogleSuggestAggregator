@@ -8,7 +8,8 @@ module.exports = function (configurationFilePath) {
     return {
         generateCombinationsFromFile: function (fileToRead, fileToProduce, onDone) {
             var lineReader = require('readline').createInterface({
-                input: fs.createReadStream(fileToRead)
+                input: fs.createReadStream(fileToRead),
+		terminal: false
             });
             var outputFileWriteStream = fs.createWriteStream(fileToProduce, {
                 flags: 'a+',
