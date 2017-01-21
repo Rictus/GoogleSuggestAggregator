@@ -2,5 +2,5 @@ var combinationsGenerator = require('./src/combinationsGenerator.js')(__dirname 
 
 console.time("combinationsGenerator");
 combinationsGenerator.launch(function () {
-    console.timeEnd("combinationsGenerator ");
+    console.timeEnd("combinationsGenerator");
 });
