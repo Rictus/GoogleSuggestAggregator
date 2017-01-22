@@ -278,17 +278,17 @@ module.exports = function (confFilePath) {
                             console.log(file + " => " + lastLine);
                             var expectedEndOfFileKeyword = conf.allowedChars[conf.allowedChars.length - 1].repeat(lengthOfWordsInFile);
                             if (lastLine.indexOf(expectedEndOfFileKeyword) == 0) {
-                                // This file is done
+                                // This file is complete
+                                if (idxFile + 1 < files.length)
+                                    loopFile(idxFile + 1);
                             } else {
-                                console.log("The file " + file + " is not done. Last line is :\n" + lastLine);
+                                console.log("The file " + file + " with words of length " + lengthOfWordsInFile + " is not done. Last line is :\n" + lastLine);
                             }
                         });
-
-                        if (idxFile + 1 < files.length)
-                            loopFile(idxFile + 1);
                     }
                 };
                 loopFile(0);
+                //TODO START PROCESS WHEN INCOMPLETE FILE IS FOUND
             });
         }
     };
