@@ -3,7 +3,7 @@ var syncRequest = require('sync-request');
 var fs = require('fs');
 var path = require('path');
 var LineByLineReader = require('line-by-line');
-
+var keywordProvider = require('./keywordGenerator.js');
 
 /**
  * Read a set of data file and query google suggest
@@ -221,7 +221,7 @@ module.exports = function (confFilePath) {
                 suggestions = _gSuggest.getSuggestionsSync(line);
                 if (suggestions === false) {
                     // Blocked by google. Need to wait
-                    var nbMsWait = 1000 * 60 * 15;
+                    var nbMsWait = 1000 * 60 * 7 + 1; // 7 minutes & 1 sec
                     _log.GoogleReject(line, nbMsWait);
                     lineReader.pause();
                     setTimeout(function () {
@@ -295,7 +295,51 @@ module.exports = function (confFilePath) {
         }
     };
 
+    var _processSimpler = {
+        sync: function (wordLength, outputFile, cb) {
+            var suggestions;
+            var onKeyword = function (keyword) {
+                suggestions = _gSuggest.getSuggestionsSync(keyword);
+                if (suggestions === false) {
+                    // Blocked by google. Need to wait
+                    var nbMsWait = 1000 * 60 * 7 + 1000; // 7 minutes & 1 sec
+                    _log.GoogleReject(keyword, nbMsWait);
+                    setTimeout(function () {
+                        onKeyword(keyword)
+                    }, nbMsWait);
+                } else {
+                    _files.writeSuggestionSync(keyword, suggestions, outputFile);
+                }
+            };
+            keywordProvider.initLength(wordLength);
+            var keyword = keywordProvider.get();
+            while (keyword.length == wordLength) {
+                onKeyword(keyword);
+                keyword = keywordProvider.next();
+            }
+            cb();
+        }
+    };
+
     return {
+        launchSimple: function (startLength, cb) {
+            _files.createDataDirectorySync();
+            var maxLength = conf.maxWordLength;
+            var loop = function (currentLength) {
+                var of = queriedDataDirectoryPath + "/queried_length_" + currentLength;
+                _files.deleteFileIfExistSync(of);
+                _processSimpler.sync(currentLength, of, function () {
+                    if (currentLength + 1 < maxLength)
+                        loop(currentLength + 1);
+                    else
+                        cb();
+                });
+            };
+            loop(startLength);
+        },
+        resume: function () {
+            // Get last lines of files and complete missing ones..
+        },
         launchSync: function () {
             _files.createDataDirectorySync();
             _files.getCombinationFiles(function (files) {

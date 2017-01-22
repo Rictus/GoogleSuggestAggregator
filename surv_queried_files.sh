@@ -6,7 +6,6 @@ while :;
   do
   clear
   date
-  wc -l queried/*
   tail -n 3 queried/*
   sleep 1
 done
