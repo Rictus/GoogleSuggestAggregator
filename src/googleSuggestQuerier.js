@@ -1,5 +1,3 @@
-var request = require('request');
-var syncRequest = require('sync-request');
 var fs = require('fs');
 var path = require('path');
 var LineByLineReader = require('line-by-line');
@@ -12,13 +10,16 @@ module.exports = function (confFilePath) {
     var conf = require(confFilePath);
 
     var queriedDataDirectoryPath = conf["queriedDataDirectoryPath"];
-
+var maxWordLength = conf["maxWordLength"];
     var _log = {
         fileWrite: function (word, suggestions, file) {
-            console.log("[" + word + "] Writing suggestions to " + file + ". Suggestions : " + suggestions);
+            //console.log("[" + word + "] Writing suggestions to " + file + ". Suggestions : " + suggestions);
         },
         errorRequest: function (url, query, explain) {
             console.error("[" + query + "] (" + url + ") : " + explain);
+        },
+        error: function (message) {
+            console.error(message);
         },
         AsyncReaderState: function (state, queueLength, currentNumberOfSockets) {
             console.log("Reader " + state + ". " + queueLength + " elements in queue. " + currentNumberOfSockets + " sockets.");
@@ -28,78 +29,6 @@ module.exports = function (confFilePath) {
         },
         GoogleReject: function (word, waitingTime) {
             console.log("[" + word + "] Google is blocking our requests. Waiting " + waitingTime + " milliseconds.");
-        }
-    };
-
-    var _request = {
-        build_url: function (query, language) {
-            if (typeof language !== "string" || language.length == 0) {
-                language = "en";
-            }
-            return "http://suggestqueries.google.com/complete/search?client=firefox&q=" + query + "&hl=" + language;
-        },
-        sync: function (query, language) {
-            var url = this.build_url(query, language);
-            try {
-                var res = syncRequest('GET', url);
-                switch (res.statusCode) {
-                    case 403:
-                        return false;
-                        break;
-                    case 200:
-                        return res.getBody().toString();
-                        break;
-                    default:
-                        _log.errorRequest(url, query, "Don't know how to handle status code " + res.statusCode);
-                        break;
-                }
-            } catch (e) {
-                var nbMsWait = 1000 * 30;
-                console.error("Lost connection. Trying in " + nbMsWait + " milliseconds.");
-                setTimeout(function () {
-                    return this.sync(query, language);
-                }, nbMsWait);
-            }
-        },
-        async: function (query, language, callback) { //TODO Check connectivity
-            var url = this.build_url(query, language);
-            request(url, function (error, response, body) {
-                if (!error && response.statusCode == 200) {
-                    callback(body, url);
-                }
-                else {
-                    callback(false, url);
-                }
-            });
-        }
-    };
-
-    var _gSuggest = {
-        normalizeBodySuggestionResponse: function (body) {
-            try {
-                body = typeof body === "string" ? JSON.parse(body) : body;
-                if (typeof body === "object" && typeof body.length === "number" && body.length > 0) {
-                    body = body[1];
-                } else if (typeof body !== "boolean") {
-                    body = [];
-                }
-                return body;
-            } catch (e) {
-                console.error("---error---");
-                console.error(body);
-                console.error(e);
-                console.error("------");
-            }
-        },
-        getSuggestionsAsync: function (word, cb) {
-            var that = this;
-            _request.async(word, 'fr', function (body) {
-                cb(that.normalizeBodySuggestionResponse(body));
-            });
-        },
-        getSuggestionsSync: function (word) {
-            var body = _request.sync(word, 'fr');
-            return this.normalizeBodySuggestionResponse(body);
         }
     };
 
@@ -120,18 +49,6 @@ module.exports = function (confFilePath) {
             catch (e) {
                 // It's ok, the file doesn't exist.
             }
-        },
-        deleteFileIfExistAsync: function (filePath, cb) {
-            fs.stat(filePath, function (err) {
-                if (err) {
-                    // It's ok the file doesn't exist.
-                    cb();
-                } else {
-                    fs.unlink(filePath, function () {
-                        cb();
-                    });
-                }
-            });
         },
         getStringToWrite: function (word, suggestions) {
             return word + this.wordSuggestionSeparator + suggestions + "\n";
@@ -164,9 +81,60 @@ module.exports = function (confFilePath) {
                 cb(output);
             });
         },
-        getQueriesFiles: function (cb) {
+        getSuggestionFiles: function (cb) {
             var dirPath = conf["queriedDataDirectoryPath"];
             this.getFilesOfDir(dirPath, cb);
+        },
+        /**
+         * Search for incomplete suggestion files.
+         * An incomplete suggestion file is a file where the last line is not the expected keyword
+         * e.g. : With allowed chars is a to z, last keyword should be zzz for length 3.
+         * @param cb Array of Objects like { file: filePath, lengthOfWords, theLength, lastKeyword: keywordOfLastLine}
+         */
+        getIncompleteSuggestionFiles: function (cb) {
+            var incompleteFiles = [];
+            var that = this;
+            _files.getSuggestionFiles(function (files) {
+                var loopFile = function (idxFile) {
+                    var file = files[idxFile];
+                    var lengthOfWordsInFile = file.split("_");
+                    lengthOfWordsInFile = lengthOfWordsInFile[lengthOfWordsInFile.length - 1];
+                    lengthOfWordsInFile = parseInt(lengthOfWordsInFile);
+                    if (lengthOfWordsInFile <= maxWordLength){
+                        _files.getLastLine(file, function (lastLine) {
+                            var expectedEndOfFileKeyword = conf.allowedChars[conf.allowedChars.length - 1].repeat(lengthOfWordsInFile);
+                            if (lastLine.indexOf(expectedEndOfFileKeyword) == 0) {
+                                // This file is complete
+
+                            } else {
+                                var lastKeyword = that.suggestionLineGetKeyword(lastLine);
+                                if (lastKeyword === false) {
+                                    _log.error("Fail to get keyword of this suggestion line " + lastLine);
+                                }
+                                incompleteFiles.push({
+                                    lengthOfWords: lengthOfWordsInFile,
+                                    file: file,
+                                    lastKeyword: lastKeyword
+                                });
+                            }
+                            if (idxFile + 1 < files.length) {
+                                loopFile(idxFile + 1);
+                            } else {
+                                cb(incompleteFiles);
+                            }
+                        });
+                    } else {
+                        cb(incompleteFiles);
+                    }
+                };
+                loopFile(0);
+            });
+        },
+        suggestionLineGetKeyword: function (line) {
+            // create a regex to capture keyword at beginning of line
+            var regexSearch = "(^[" + conf.allowedChars + "]+) > .*$";
+            var m = line.match(regexSearch);
+            return m && m.length > 0 ? m[1] : false;
         },
         readLineSync: function (filePath, actionOnEachLine) {
             var fd = fs.openSync(filePath, 'r');
@@ -248,7 +216,7 @@ module.exports = function (confFilePath) {
     return {
         launch: function (startLength, cb) {
             _files.createDataDirectorySync();
-            var maxLength = conf.maxWordLength;
+            var maxLength = maxWordLength;
             var loop = function (currentLength) {
                 var of = queriedDataDirectoryPath + "/queried_length_" + currentLength;
                 _files.deleteFileIfExistSync(of);
@@ -263,33 +231,10 @@ module.exports = function (confFilePath) {
         },
         resume: function () {
             _files.createDataDirectorySync();
-            var maxLength = conf.maxWordLength;
-            // Get last lines of files and complete missing ones..
-            _files.getQueriesFiles(function (files) {
-                var loopFile = function (idxFile) {
-                    var file = files[idxFile];
-                    var lengthOfWordsInFile = file.split("_");
-                    lengthOfWordsInFile = lengthOfWordsInFile[lengthOfWordsInFile.length - 1];
-                    lengthOfWordsInFile = parseInt(lengthOfWordsInFile);
-                    if (lengthOfWordsInFile > maxLength) {
-                        //DONE
-                    } else {
-                        _files.getLastLine(file, function (lastLine) {
-                            console.log(file + " => " + lastLine);
-                            var expectedEndOfFileKeyword = conf.allowedChars[conf.allowedChars.length - 1].repeat(lengthOfWordsInFile);
-                            if (lastLine.indexOf(expectedEndOfFileKeyword) == 0) {
-                                // This file is complete
-                                if (idxFile + 1 < files.length)
-                                    loopFile(idxFile + 1);
-                            } else {
-                                console.log("The file " + file + " with words of length " + lengthOfWordsInFile + " is not done. Last line is :\n" + lastLine);
-                            }
-                        });
-                    }
-                };
-                loopFile(0);
-                //TODO START PROCESS WHEN INCOMPLETE FILE IS FOUND
-            });
+            var maxLength = maxWordLength;
+            _files.getIncompleteSuggestionFiles(function (d) {
+                console.log(d);
+            })
         }
     };
 };
