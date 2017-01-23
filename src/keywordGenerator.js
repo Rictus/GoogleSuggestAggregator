@@ -8,8 +8,8 @@ String.prototype.replaceAt = function (index, character) {
 
 var keywordProvider = {
     current: "",
-    init: function (startString) {
-        this.current = startString.length > 0 ? startString : conf.allowedChars[0];
+    init: function (startString, expectedLength) {
+        this.current = startString && startString.length > 0 ? startString : conf.allowedChars[0].repeat(expectedLength);
     },
     initLength: function (length) {
         this.current = conf.allowedChars[0].repeat(length);

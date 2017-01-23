@@ -1,7 +1,7 @@
 var fs = require('fs');
 var path = require('path');
 var LineByLineReader = require('line-by-line');
-var keywordProvider = require('./keywordGenerator.js');
+var googleSuggest = require('./googleSuggest.js');
 
 /**
  * Read a set of data file and query google suggest
@@ -10,7 +10,7 @@ module.exports = function (confFilePath) {
     var conf = require(confFilePath);
 
     var queriedDataDirectoryPath = conf["queriedDataDirectoryPath"];
-var maxWordLength = conf["maxWordLength"];
+    var maxWordLength = conf["maxWordLength"];
     var _log = {
         fileWrite: function (word, suggestions, file) {
             //console.log("[" + word + "] Writing suggestions to " + file + ". Suggestions : " + suggestions);
@@ -34,11 +34,30 @@ var maxWordLength = conf["maxWordLength"];
 
     var _files = {
         wordSuggestionSeparator: " > ",
+        suggestionFilename: function (lengthOfWords) {
+            return "queried_length_" + lengthOfWords;
+        },
         createDataDirectorySync: function () {
             try {
                 fs.statSync(queriedDataDirectoryPath);
             } catch (e) {
                 fs.mkdirSync(queriedDataDirectoryPath);
+            }
+        },
+        createMissingSuggestionFilesSync: function () {
+            var that = this;
+            var loop = function (currentLength) {
+                var filename = that.suggestionFilename(currentLength);
+                var filePath = queriedDataDirectoryPath + "/" + filename;
+                try {
+                    fs.statSync(filePath); //The file exist
+                } catch (e) {
+                    // The file doesn't exist
+                    fs.closeSync(fs.openSync(filePath, 'w'));
+                }
+            };
+            for (var i = 1; i < maxWordLength; i++) {
+                loop(i);
             }
         },
         deleteFileIfExistSync: function (filePath) {
@@ -86,48 +105,56 @@ var maxWordLength = conf["maxWordLength"];
             this.getFilesOfDir(dirPath, cb);
         },
         /**
-         * Search for incomplete suggestion files.
-         * An incomplete suggestion file is a file where the last line is not the expected keyword
-         * e.g. : With allowed chars is a to z, last keyword should be zzz for length 3.
-         * @param cb Array of Objects like { file: filePath, lengthOfWords, theLength, lastKeyword: keywordOfLastLine}
+         * Search for suggestion files.
+         * Give an object describing state of each file (path, lastKeyword, if it is done).
+         * If a file doesn't exist, it is created
+         * @param cb Function(Array of objects)
+         * example of object :
+         * { file: 'queried\\queried_length_1',
+             lastKeyword: 'c',
+             lastLine: 'c > cdiscount,,convertisseur youtube,carrefour,castorama,camaieu,calendrier 2017,cultura',
+             isComplete: false,
+             wordLength: 1 }
          */
-        getIncompleteSuggestionFiles: function (cb) {
-            var incompleteFiles = [];
+        getSuggestionFilesStates: function (cb) {
+            var filesState = [];
             var that = this;
+            _files.createMissingSuggestionFilesSync();
             _files.getSuggestionFiles(function (files) {
                 var loopFile = function (idxFile) {
                     var file = files[idxFile];
                     var lengthOfWordsInFile = file.split("_");
-                    lengthOfWordsInFile = lengthOfWordsInFile[lengthOfWordsInFile.length - 1];
-                    lengthOfWordsInFile = parseInt(lengthOfWordsInFile);
-                    if (lengthOfWordsInFile <= maxWordLength){
-                        _files.getLastLine(file, function (lastLine) {
-                            var expectedEndOfFileKeyword = conf.allowedChars[conf.allowedChars.length - 1].repeat(lengthOfWordsInFile);
-                            if (lastLine.indexOf(expectedEndOfFileKeyword) == 0) {
-                                // This file is complete
+                    lengthOfWordsInFile = parseInt(lengthOfWordsInFile[lengthOfWordsInFile.length - 1]);
+                    var isComplete = false;
 
-                            } else {
-                                var lastKeyword = that.suggestionLineGetKeyword(lastLine);
-                                if (lastKeyword === false) {
-                                    _log.error("Fail to get keyword of this suggestion line " + lastLine);
-                                }
-                                incompleteFiles.push({
-                                    lengthOfWords: lengthOfWordsInFile,
-                                    file: file,
-                                    lastKeyword: lastKeyword
-                                });
-                            }
-                            if (idxFile + 1 < files.length) {
-                                loopFile(idxFile + 1);
-                            } else {
-                                cb(incompleteFiles);
-                            }
-                        });
-                    } else {
-                        cb(incompleteFiles);
-                    }
+                    _files.getLastLine(file, function (lastLine) {
+                        var expectedEndOfFileKeyword = conf.allowedChars[conf.allowedChars.length - 1].repeat(lengthOfWordsInFile);
+                        if (lastLine.indexOf(expectedEndOfFileKeyword) == 0) {
+                            // This file is complete
+                            isComplete = true;
+                        } else {
+                            isComplete = false;
+                            var lastKeyword = that.suggestionLineGetKeyword(lastLine);
+                            lastKeyword = lastKeyword === false ? "" : lastKeyword;
+                            filesState.push({
+                                file: file,
+                                lastKeyword: lastKeyword,
+                                lastLine: lastLine,
+                                isComplete: isComplete,
+                                wordLength: lengthOfWordsInFile
+                            });
+                        }
+                        if (idxFile + 1 < files.length) {
+                            loopFile(idxFile + 1);
+                        } else {
+                            cb(filesState);
+                        }
+                    });
                 };
-                loopFile(0);
+                if (files.length > 0)
+                    loopFile(0);
+                else
+                    cb(filesState)
             });
         },
         suggestionLineGetKeyword: function (line) {
@@ -169,15 +196,6 @@ var maxWordLength = conf["maxWordLength"];
             });
             return lr;
         },
-        getQueriedWords: function (filePath, cb) {
-            var that = this;
-            var queriedWords = [];//WIP
-            var lr = this.readFileAsync(filePath, function (line) {
-                queriedWords.push(line.split(that.wordSuggestionSeparator)[0]);
-            }, function () {
-                cb(queriedWords);
-            });
-        },
         getLastLine: function (filePath, cb) {
             var lastLine = "";
             this.readFileAsync(filePath, function (line) {
@@ -188,10 +206,14 @@ var maxWordLength = conf["maxWordLength"];
         }
     };
     var _processSimpler = {
-        sync: function (wordLength, outputFile, cb) {
+        sync: function (suggestionFile, cb) {
+            var lastKeyword = suggestionFile.lastKeyword;
+            var outputFile = suggestionFile.file;
+            var wordLength = suggestionFile.wordLength;
             var suggestions;
+            var keywordProvider = require('./keywordGenerator.js');
             var onKeyword = function (keyword) {
-                suggestions = _gSuggest.getSuggestionsSync(keyword);
+                suggestions = googleSuggest.getSuggestionsSync(keyword);
                 if (suggestions === false) {
                     // Blocked by google. Need to wait
                     var nbMsWait = 1000 * 60 * 7 + 1000; // 7 minutes & 1 sec
@@ -203,7 +225,11 @@ var maxWordLength = conf["maxWordLength"];
                     _files.writeSuggestionSync(keyword, suggestions, outputFile);
                 }
             };
-            keywordProvider.initLength(wordLength);
+            keywordProvider.init(lastKeyword, wordLength);
+            if (lastKeyword.length > 0) {
+                // Ths suggestion for this keyword are already written in the fie
+                keywordProvider.next();
+            }
             var keyword = keywordProvider.get();
             while (keyword.length == wordLength) {
                 onKeyword(keyword);
@@ -218,7 +244,7 @@ var maxWordLength = conf["maxWordLength"];
             _files.createDataDirectorySync();
             var maxLength = maxWordLength;
             var loop = function (currentLength) {
-                var of = queriedDataDirectoryPath + "/queried_length_" + currentLength;
+                var of = queriedDataDirectoryPath + "/" + _files.suggestionFilename(currentLength);
                 _files.deleteFileIfExistSync(of);
                 _processSimpler.sync(currentLength, of, function () {
                     if (currentLength + 1 < maxLength)
@@ -229,12 +255,25 @@ var maxWordLength = conf["maxWordLength"];
             };
             loop(startLength);
         },
-        resume: function () {
+        resume: function (cb) {
             _files.createDataDirectorySync();
-            var maxLength = maxWordLength;
-            _files.getIncompleteSuggestionFiles(function (d) {
-                console.log(d);
-            })
+
+            var onSuggestionFilesReady = function (suggestionFiles) {
+                var loop = function (suggFileIdx) {
+                    var currentSuggestionFile = suggestionFiles[suggFileIdx];
+                    console.log("Building " + currentSuggestionFile.file + " with length of " + currentSuggestionFile.wordLength);
+                    _processSimpler.sync(currentSuggestionFile, function () {
+                        if (suggFileIdx + 1 < suggestionFiles.length) {
+                            loop(suggFileIdx + 1);
+                        }
+                    });
+                };
+                if (suggestionFiles.length > 0)
+                    loop(0);
+
+            };
+
+            _files.getSuggestionFilesStates(onSuggestionFilesReady);
         }
     };
 };
