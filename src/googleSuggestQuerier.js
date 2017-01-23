@@ -261,8 +261,10 @@ module.exports = function (confFilePath) {
             var onSuggestionFilesReady = function (suggestionFiles) {
                 var loop = function (suggFileIdx) {
                     var currentSuggestionFile = suggestionFiles[suggFileIdx];
-                    console.log("Building " + currentSuggestionFile.file + " with length of " + currentSuggestionFile.wordLength);
+                    console.log("Getting suggestions of words of length " + currentSuggestionFile.wordLength);
+                    console.time("Suggestions of words of length " + currentSuggestionFile.wordLength);
                     _processSimpler.sync(currentSuggestionFile, function () {
+                        console.timeEnd("Suggestions of words of length " + currentSuggestionFile.wordLength);
                         if (suggFileIdx + 1 < suggestionFiles.length) {
                             loop(suggFileIdx + 1);
                         }
