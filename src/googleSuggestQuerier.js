@@ -13,7 +13,7 @@ module.exports = function (confFilePath) {
     var maxWordLength = conf["maxWordLength"];
     var _log = {
         fileWrite: function (word, suggestions, file) {
-            //console.log("[" + word + "] Writing suggestions to " + file + ". Suggestions : " + suggestions);
+            console.log("[" + word + "] Writing suggestions to " + file + ". Suggestions : " + suggestions);
         },
         errorRequest: function (url, query, explain) {
             console.error("[" + query + "] (" + url + ") : " + explain);
@@ -211,27 +211,32 @@ module.exports = function (confFilePath) {
             var outputFile = suggestionFile.file;
             var wordLength = suggestionFile.wordLength;
             var keywordProvider = require('./keywordGenerator.js');
+
+
             var onSuggestions = function (suggestions) {
-                if (suggestions === false) {
-                    // Blocked by google. Need to wait
-                    var nbMsWait = 1000 * 60 * 7 + 1000; // 7 minutes & 1 sec
-                    _log.GoogleReject(keyword, nbMsWait);
-                    setTimeout(function () {
-                        onKeyword(keyword, onSuggestions)
-                    }, nbMsWait);
-                } else {
-                    _files.writeSuggestionSync(keyword, suggestions, outputFile);
-                    testContinue();
-                }
+                _files.writeSuggestionSync(keyword, suggestions, outputFile);
+                testContinue();
             };
-            var onKeyword = function (keyword, cb) {
-                googleSuggest.getSuggestionsAsync(keyword, onSuggestions);
+
+            var onKeyword = function (keyword) {
+                googleSuggest.getSuggestionsAsync(keyword, function (suggestions) {
+                    if (suggestions === false) {
+                        // Blocked by google. Need to wait
+                        var nbMsWait = 1000 * 60 * 7 + 1000; // 7 minutes & 1 sec
+                        _log.GoogleReject(keyword, nbMsWait);
+                        setTimeout(function () {
+                            onKeyword(keyword);
+                        }, nbMsWait);
+                    } else {
+                        onSuggestions(suggestions);
+                    }
+                });
             };
 
             var testContinue = function () {
+                keywordProvider.next();
+                keyword = keywordProvider.get();
                 if (keyword.length == wordLength) {
-                    keywordProvider.next();
-                    keyword = keywordProvider.get();
                     onKeyword(keyword);
                 } else {
                     cb();
