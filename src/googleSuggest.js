@@ -1,7 +1,6 @@
 "use strict";
 var request = require('request');
-var syncRequest = require('sync-request');
-
+var iconv = require('iconv-lite');
 var _request = {
     build_url: function (query, language) {
         if (typeof language !== "string" || language.length == 0) {
@@ -9,37 +8,46 @@ var _request = {
         }
         return "http://suggestqueries.google.com/complete/search?client=firefox&q=" + query + "&hl=" + language;
     },
-    sync: function (query, language) {
-        var url = this.build_url(query, language);
-        try {
-            var res = syncRequest('GET', url);
-            switch (res.statusCode) {
-                case 403:
-                    return false;
+    handleRequestError: function (query, language, requestCallback, error, response) {
+        if (error) {
+            var time = 0;
+            switch (error.code) {
+                case "ECONNRESET":
+                    console.warn("Connexion reset. Retrying in 5s ...");
+                    time = 5 * 1000;
                     break;
-                case 200:
-                    return res.getBody().toString();
+                case "ETIMEDOUT":
+                    requestCallback(false);
                     break;
                 default:
-                    _log.errorRequest(url, query, "Don't know how to handle status code " + res.statusCode);
+                    console.error("Don't know how to handle error code : " + error.code + ". Retrying in 3 sec ...");
+                    time = 3 * 1000;
                     break;
             }
-        } catch (e) {
-            var nbMsWait = 1000 * 30;
-            console.error("Lost connection. Trying in " + nbMsWait + " milliseconds.");
             setTimeout(function () {
-                return this.sync(query, language);
-            }, nbMsWait);
+                _request.async(query, language, requestCallback);
+            }, time);
+        } else {
+            switch (response.statusCode) {
+                case 403:
+                    requestCallback(false, url);
+                    break;
+                default:
+                    console.error("Don't know how to handle status code : " + response.statusCode);
+                    break;
+            }
         }
     },
-    async: function (query, language, callback) { //TODO Check connectivity
+    async: function (query, language, callback) {
         var url = this.build_url(query, language);
-        request(url, function (error, response, body) {
+        var requestOptions = {encoding: null, method: "GET", uri: url};
+        request(requestOptions, function (error, response, body) {
             if (!error && response.statusCode == 200) {
-                callback(body, url);
+                var utf8String = iconv.decode(new Buffer(body), "ISO-8859-1");
+                callback(utf8String, url);
             }
             else {
-                callback(false, url);
+                _request.handleRequestError();
             }
         });
     }
@@ -67,11 +75,11 @@ var _gSuggest = {
         _request.async(word, 'fr', function (body) {
             cb(that.normalizeBodySuggestionResponse(body));
         });
-    },
-    getSuggestionsSync: function (word) {
-        var body = _request.sync(word, 'fr');
-        return this.normalizeBodySuggestionResponse(body);
     }
 };
-
+/*
+ _gSuggest.getSuggestionsAsync("etei", function (suggestions) {
+ console.log(suggestions);
+ });
+ //*/
 module.exports = _gSuggest;

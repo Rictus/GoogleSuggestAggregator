@@ -210,32 +210,41 @@ module.exports = function (confFilePath) {
             var lastKeyword = suggestionFile.lastKeyword;
             var outputFile = suggestionFile.file;
             var wordLength = suggestionFile.wordLength;
-            var suggestions;
             var keywordProvider = require('./keywordGenerator.js');
-            var onKeyword = function (keyword) {
-                suggestions = googleSuggest.getSuggestionsSync(keyword);
+            var onSuggestions = function (suggestions) {
                 if (suggestions === false) {
                     // Blocked by google. Need to wait
                     var nbMsWait = 1000 * 60 * 7 + 1000; // 7 minutes & 1 sec
                     _log.GoogleReject(keyword, nbMsWait);
                     setTimeout(function () {
-                        onKeyword(keyword)
+                        onKeyword(keyword, onSuggestions)
                     }, nbMsWait);
                 } else {
                     _files.writeSuggestionSync(keyword, suggestions, outputFile);
+                    testContinue();
                 }
             };
+            var onKeyword = function (keyword, cb) {
+                googleSuggest.getSuggestionsAsync(keyword, onSuggestions);
+            };
+
+            var testContinue = function () {
+                if (keyword.length == wordLength) {
+                    keywordProvider.next();
+                    keyword = keywordProvider.get();
+                    onKeyword(keyword);
+                } else {
+                    cb();
+                }
+            };
+
             keywordProvider.init(lastKeyword, wordLength);
             if (lastKeyword.length > 0) {
                 // Ths suggestion for this keyword are already written in the fie
                 keywordProvider.next();
             }
             var keyword = keywordProvider.get();
-            while (keyword.length == wordLength) {
-                onKeyword(keyword);
-                keyword = keywordProvider.next();
-            }
-            cb();
+            onKeyword(keyword);
         }
     };
 
