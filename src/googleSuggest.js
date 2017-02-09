@@ -28,17 +28,14 @@ var _request = {
                 _request.async(query, language, requestCallback);
             }, time);
         } else {
-		requestCallback(false);
-/*
             switch (response.statusCode) {
                 case 403:
-                    requestCallback(false, url);
+                    requestCallback(false);
                     break;
                 default:
                     console.error("Don't know how to handle status code : " + response.statusCode);
                     break;
             }
-//*/
         }
     },
     async: function (query, language, callback) {
@@ -50,7 +47,7 @@ var _request = {
                 callback(utf8String, url);
             }
             else {
-                _request.handleRequestError();
+                _request.handleRequestError(query,language,callback,error, response);
             }
         });
     }
