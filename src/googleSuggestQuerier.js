@@ -13,7 +13,7 @@ module.exports = function (confFilePath) {
     var maxWordLength = conf["maxWordLength"];
     var _log = {
         fileWrite: function (word, suggestions, file) {
-            console.log("[" + word + "] Writing suggestions to " + file + ". Suggestions : " + suggestions);
+//            console.log("[" + word + "] Writing suggestions to " + file + ". Suggestions : " + suggestions);
         },
         errorRequest: function (url, query, explain) {
             console.error("[" + query + "] (" + url + ") : " + explain);
