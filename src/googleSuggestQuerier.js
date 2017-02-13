@@ -2,12 +2,12 @@ var fs = require('fs');
 var path = require('path');
 var LineByLineReader = require('line-by-line');
 var googleSuggest = require('./googleSuggest.js');
-
+var requireHot = require('./requireHot.js');
 /**
  * Read a set of data file and query google suggest
  */
 module.exports = function (confFilePath) {
-    var conf = require(confFilePath);
+    var conf = requireHot(confFilePath);
 
     var queriedDataDirectoryPath = conf["queriedDataDirectoryPath"];
     var maxWordLength = conf["maxWordLength"];
@@ -29,7 +29,7 @@ module.exports = function (confFilePath) {
         },
         GoogleReject: function (word, waitingTime) {
             console.log(new Date());
-            console.log("[" + word + "] Google is blocking our requests. Waiting " + (waitingTime/1000) + " seconds.");
+            console.log("[" + word + "] Google is blocking our requests. Waiting " + (waitingTime / 1000) + " seconds.");
         }
     };
 
@@ -96,7 +96,7 @@ module.exports = function (confFilePath) {
                 }).filter(function (file) {
                     return fs.statSync(file).isFile();
                 }).forEach(function (file) {
-		    
+
                     output.push(file);
                 });
                 cb(output);
@@ -104,16 +104,16 @@ module.exports = function (confFilePath) {
         },
         getSuggestionFiles: function (cb) {
             var dirPath = conf["queriedDataDirectoryPath"];
-            this.getFilesOfDir(dirPath, function(files){
-		var regex=/.*queried_length_.*/;
-		var output = [];
-		for(var i = 0; i < files.length;i++){
-			if(files[i].match(regex)){
-				output.push(files[i]);
-			}		
-		}
-cb(output);
-		});
+            this.getFilesOfDir(dirPath, function (files) {
+                var regex = /.*queried_length_.*/;
+                var output = [];
+                for (var i = 0; i < files.length; i++) {
+                    if (files[i].match(regex)) {
+                        output.push(files[i]);
+                    }
+                }
+                cb(output);
+            });
         },
         /**
          * Search for suggestion files.
@@ -233,7 +233,7 @@ cb(output);
                 googleSuggest.getSuggestionsAsync(keyword, function (suggestions) {
                     if (suggestions === false) {
                         // Blocked by google. Need to wait
-                        var nbMsWait = 1000 * 60 * 60 + 1000; // 60 minutes & 1 sec
+                        var nbMsWait = 1000 * 60 + 1000; // 1 minutes & 1 sec
                         _log.GoogleReject(keyword, nbMsWait);
                         setTimeout(function () {
                             onKeyword(keyword);
@@ -245,10 +245,14 @@ cb(output);
             };
 
             var testContinue = function () {
+                var conf = requireHot(confFilePath);
                 keywordProvider.next();
                 keyword = keywordProvider.get();
                 if (keyword.length == wordLength) {
-                    onKeyword(keyword);
+                    // Wait some time before continuing
+                    setTimeout(function () {
+                        onKeyword(keyword);
+                    }, conf["waitBetweenCallMs"]);
                 } else {
                     cb();
                 }
@@ -280,7 +284,7 @@ cb(output);
             };
             loop(startLength);
         },
-        resume: function (s,cb) {
+        resume: function (s, cb) {
             _files.createDataDirectorySync();
 
             var onSuggestionFilesReady = function (suggestionFiles) {

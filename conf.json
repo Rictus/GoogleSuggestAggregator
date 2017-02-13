@@ -3,5 +3,6 @@
   "allowedChars": "abcdefghijklmnopqrstuvwxyz ",
   "generatedFiles": [],
   "generatedDataDirectoryPath": "generations",
-  "queriedDataDirectoryPath": "queried"
+  "queriedDataDirectoryPath": "queried",
+  "waitBetweenCallMs": "1000"
 }
