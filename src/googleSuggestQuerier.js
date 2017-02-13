@@ -28,7 +28,8 @@ module.exports = function (confFilePath) {
             console.log("[" + word + "] Socket " + state);
         },
         GoogleReject: function (word, waitingTime) {
-            console.log("[" + word + "] Google is blocking our requests. Waiting " + waitingTime + " milliseconds.");
+            console.log(new Date());
+            console.log("[" + word + "] Google is blocking our requests. Waiting " + (waitingTime/1000) + " seconds.");
         }
     };
 
@@ -95,6 +96,7 @@ module.exports = function (confFilePath) {
                 }).filter(function (file) {
                     return fs.statSync(file).isFile();
                 }).forEach(function (file) {
+		    
                     output.push(file);
                 });
                 cb(output);
@@ -102,7 +104,16 @@ module.exports = function (confFilePath) {
         },
         getSuggestionFiles: function (cb) {
             var dirPath = conf["queriedDataDirectoryPath"];
-            this.getFilesOfDir(dirPath, cb);
+            this.getFilesOfDir(dirPath, function(files){
+		var regex=/.*queried_length_.*/;
+		var output = [];
+		for(var i = 0; i < files.length;i++){
+			if(files[i].match(regex)){
+				output.push(files[i]);
+			}		
+		}
+cb(output);
+		});
         },
         /**
          * Search for suggestion files.
@@ -222,7 +233,7 @@ module.exports = function (confFilePath) {
                 googleSuggest.getSuggestionsAsync(keyword, function (suggestions) {
                     if (suggestions === false) {
                         // Blocked by google. Need to wait
-                        var nbMsWait = 1000 * 60 * 7 + 1000; // 7 minutes & 1 sec
+                        var nbMsWait = 1000 * 60 * 60 + 1000; // 60 minutes & 1 sec
                         _log.GoogleReject(keyword, nbMsWait);
                         setTimeout(function () {
                             onKeyword(keyword);
@@ -269,7 +280,7 @@ module.exports = function (confFilePath) {
             };
             loop(startLength);
         },
-        resume: function (cb) {
+        resume: function (s,cb) {
             _files.createDataDirectorySync();
 
             var onSuggestionFilesReady = function (suggestionFiles) {

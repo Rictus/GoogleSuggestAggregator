@@ -28,6 +28,7 @@ var _request = {
                 _request.async(query, language, requestCallback);
             }, time);
         } else {
+		console.log("Status code "+response.statusCode);
             switch (response.statusCode) {
                 case 403:
                     requestCallback(false);
