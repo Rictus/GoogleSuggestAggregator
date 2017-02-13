@@ -5,6 +5,7 @@ TEST_LINE="llc > fregre,gr---grth,fsd"
 colorize() {
 
     LINE=`cat` # read from stdin
+	echo $LINE
     KEYWORD=`echo $LINE | cut -d" " -f1`
     CHEVRON=`echo $LINE | cut -d" " -f2`
     SUGGESTIONS_LINE=`echo $LINE | cut -d" " -f3`
@@ -26,8 +27,11 @@ colorize() {
         echo -en "$(tput setaf 7)$SUGGESTION_GREP$(tput sgr 0)$(tput setaf 2),$(tput sgr 0) "
     done
     IFS=$OLD_IFS
-
+    echo ""
     tput sgr0
 }
+tail -f queried/queried_length_4 >>> colorize
 
-tail -f $1|colorize
+
+
+
